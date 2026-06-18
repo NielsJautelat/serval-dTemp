@@ -924,13 +924,17 @@ def fitspec(tpl, w, f, e_f=None, v=0, vfix=False, clip=None, nclip=1, keep=None,
    else:
       return par, fMod, keep, stat
 
+#######################
+### dTemp Functions ###
+#######################
+
 
 
 def serval():
 
    if not bp: sys.stdout = Logger()
 
-   global obj, targ, oset, coset, last, tpl, sp, fmod, reana, inst, fib, look, looka, looki, lookt, lookp, lookssr, lookvsini, pmin, pmax, debug, pspllam, kapsig, nclip, atmfile, skyfile, atmwgt, omin, omax, ptmin, ptmax, driftref, deg, targrv, tplrv, tplvsini, tplR, R_inst
+   global obj, targ, oset, coset, last, tpl, sp, fmod, reana, inst, fib, look, looka, looki, lookt, lookp, lookssr, lookvsini, pmin, pmax, debug, pspllam, kapsig, nclip, atmfile, skyfile, atmwgt, omin, omax, ptmin, ptmax, driftref, deg, targrv, tplrv, tplvsini, tplR, R_inst, dtemp_tpl, dtemp_dT
 
    outdir = obj + '/'
    fibsuf = '_B' if inst=='FEROS' and fib=='B' else ''
@@ -1095,6 +1099,8 @@ def serval():
    irtfile = outdir + obj + '.cairt' + fibsuf + '.dat'
    dlwfile = outdir + obj + '.dlw' + fibsuf + '.dat'
    e_dlwfile = outdir + obj + '.e_dlw' + fibsuf + '.dat'
+   dtempfile = outdir + obj + '.dtemp' + fibsuf + '.dat'
+   e_dtempfile = outdir + obj + '.e_dtemp' + fibsuf + '.dat'
 
    # (echo 0 0 ; awk '{if($2!=x2){print x; print $0}; x=$0; x2=$2;}' telluric_mask_atlas.dat )> telluric_mask_atlas_short.dat
    #################################
@@ -2751,6 +2757,8 @@ if __name__ == "__main__":
    argopt('-deg',  help='degree for background polynomial'+default, type=int, default=3)
    argopt('-distmax', help='[arcsec] Max distance telescope position from target coordinates.', nargs='?', type=float, const=30.)
    argopt('-driftref', help='reference file for drift mode', type=str)
+   argopt('-dtemp_tpl', help='Temperature gradient template (dA/dT). Provide a serval template or fits.', nargs='?')
+   argopt('-dtemp_dT', help='[K] Temperature spacing used to build dtemp_tpl.', type=float)
    argopt('-fib',  help='fibre', choices=['', 'A', 'B', 'AB'], default='')
    argopt('-inst', help='instrument '+default, default='HARPS', choices=insts)
    argopt('-nset', '-iset', help='slice for file subset (e.g. 1:10, ::5)', default=':', type=arg2slice)
