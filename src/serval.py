@@ -940,8 +940,8 @@ def _split_1d_template_by_order(ww, ff, spt):
          ff[o] = 0 * spt.f[o]
    return ww, ff
 
-def _dtemp_template_paths(dtemp_tpl):
-   paths = dtemp_tpl if isinstance(dtemp_tpl, list) else [dtemp_tpl]
+def _dTemp_template_paths(dTemp_tpl):
+   paths = dTemp_tpl if isinstance(dTemp_tpl, list) else [dTemp_tpl]
    out = []
    for path in paths:
       if os.path.isdir(path):
@@ -954,7 +954,7 @@ def _dtemp_template_paths(dtemp_tpl):
          out += [path]
    return out
 
-def _read_dtemp_template(path, spt):
+def _read_dTemp_template(path, spt, inst, drs, fib, targ):
    if path.endswith('.s1d.fits'):
       import astropy.io.fits as pyfits
       with pyfits.open(path) as hdu:
@@ -968,9 +968,13 @@ def _read_dtemp_template(path, spt):
       ww, ff, qq, _ = read_template(path+(os.sep+os.path.basename(path.rstrip(os.sep))+'.fits' if os.path.isdir(path) else ''))
       return ww, ff, qq, None
 
-   raise ValueError('Unsupported dTemp template format: %s' % path)
+   try:
+      sp = Spectrum(path, inst=inst, pfits=True, orders=np.s_[:], drs=drs, fib=fib, targ=targ)
+      return barshift(sp.w, sp.berv), sp.f, sp.bpmap, None
+   except Exception as e:
+      raise ValueError('Unsupported dTemp template format: %s (%s)' % (path, e))
 
-def _mean_dtemp_templates(template_sets, nord):
+def _mean_dTemp_templates(template_sets, nord):
    ww0, gg0, bb0, rtpl0 = template_sets[0]
    if len(template_sets) == 1:
       return ww0, gg0, bb0, rtpl0
@@ -992,34 +996,28 @@ def _mean_dtemp_templates(template_sets, nord):
          bb += [None]
    return ww0, gg, bb, rtpl0
 
-def load_dtemp_template(dtemp_tpl, TPL, spt, spline_cv, spline_ev, tplvsini, tplR, R_inst, v_lo, v_hi, tplqmin, dtemp_dT, dtemp_mode):
-   paths = _dtemp_template_paths(dtemp_tpl)
+def load_dTemp_template(dTemp_tpl, TPL, spt, spline_cv, spline_ev, tplvsini, tplR, R_inst, v_lo, v_hi, tplqmin, dTemp_dT, inst, drs, fib, targ):
+   paths = _dTemp_template_paths(dTemp_tpl)
    if not paths:
-      raise ValueError('No dTemp template fits files found in: %s' % dtemp_tpl)
+      raise ValueError('No dTemp template fits files found in: %s' % dTemp_tpl)
 
-   if dtemp_mode == 'auto':
-      dtemp_mode = 'difference' if (dtemp_dT or len(paths) > 1) else 'gradient'
-   if dtemp_mode == 'difference' and not dtemp_dT:
-      raise ValueError('dtemp_dT is required when dtemp_mode="difference".')
-
-   print('dTemp template mode:', dtemp_mode)
    template_sets = []
    R_tpl = np.inf
    for path in paths:
       print('restoring dTemp template:', path)
-      ww, ff, qq, rtpl = _read_dtemp_template(path, spt)
+      ww, ff, qq, rtpl = _read_dTemp_template(path, spt, inst, drs, fib, targ)
       if rtpl is not None:
          R_tpl = min(R_tpl, rtpl)
       bb = [None] * len(ff) if qq is None else qq < tplqmin
       gg = []
       for o, (wo, fo) in enumerate(zip(ww, ff)):
-         if dtemp_mode == 'difference':
-            gg += [(fo - TPL[o](wo)) / dtemp_dT]
+         if TPL[o] is None:
+            gg += [np.nan * fo]
          else:
-            gg += [fo / dtemp_dT if dtemp_dT else fo]
+            gg += [(fo - TPL[o](wo)) / dTemp_dT]
       template_sets += [(ww, gg, bb, R_tpl)]
 
-   ww, gg, bb, R_tpl = _mean_dtemp_templates(template_sets, len(TPL))
+   ww, gg, bb, R_tpl = _mean_dTemp_templates(template_sets, len(TPL))
 
    R = None
    if tplR is not None:
@@ -1028,14 +1026,14 @@ def load_dtemp_template(dtemp_tpl, TPL, spt, spline_cv, spline_ev, tplvsini, tpl
       R = (R_inst**-2 - R_tpl**-2)**-0.5
       print('Resolving power (dTemp) R_inst = %i, R_tpl = %.0f, R = %i.' % (R_inst, R_tpl, R))
 
-   return [Tpl(wo, go, spline_cv, spline_ev, bk=bo, vsini=tplvsini, R=R, mask=True, vrange=[v_lo, v_hi]) for wo,go,bo in zip(ww,gg,bb)]
-
+   return [None if TPL[o] is None else Tpl(wo, go, spline_cv, spline_ev, bk=bo, vsini=tplvsini, R=R, mask=True, vrange=[v_lo, v_hi])
+           for o,(wo,go,bo) in enumerate(zip(ww,gg,bb))]
 
 def serval():
 
    if not bp: sys.stdout = Logger()
 
-   global obj, targ, oset, coset, last, tpl, sp, fmod, reana, inst, fib, look, looka, looki, lookt, lookp, lookssr, lookvsini, pmin, pmax, debug, pspllam, kapsig, nclip, atmfile, skyfile, atmwgt, omin, omax, ptmin, ptmax, driftref, deg, targrv, tplrv, tplvsini, tplR, R_inst, dtemp_tpl, dtemp_dT
+   global obj, targ, oset, coset, last, tpl, sp, fmod, reana, inst, fib, look, looka, looki, lookt, lookp, lookssr, lookvsini, pmin, pmax, debug, pspllam, kapsig, nclip, atmfile, skyfile, atmwgt, omin, omax, ptmin, ptmax, driftref, deg, targrv, tplrv, tplvsini, tplR, R_inst, dTemp_tpl, dTemp_dT
 
    outdir = obj + '/'
    fibsuf = '_B' if inst=='FEROS' and fib=='B' else ''
@@ -1200,8 +1198,8 @@ def serval():
    irtfile = outdir + obj + '.cairt' + fibsuf + '.dat'
    dlwfile = outdir + obj + '.dlw' + fibsuf + '.dat'
    e_dlwfile = outdir + obj + '.e_dlw' + fibsuf + '.dat'
-   dtempfile = outdir + obj + '.dtemp' + fibsuf + '.dat'
-   e_dtempfile = outdir + obj + '.e_dtemp' + fibsuf + '.dat'
+   dTempfile = outdir + obj + '.dTemp' + fibsuf + '.dat'
+   e_dTempfile = outdir + obj + '.e_dTemp' + fibsuf + '.dat'
 
    # (echo 0 0 ; awk '{if($2!=x2){print x; print $0}; x=$0; x2=$2;}' telluric_mask_atlas.dat )> telluric_mask_atlas_short.dat
    #################################
@@ -1635,12 +1633,12 @@ def serval():
       # set up array for vsini
       VSINI = np.nan * np.empty([nord,2])
 
-         dtemp_tpl_set = None
-   if dtemp_tpl:
-      if dtemp_dT == 0:
-         raise ValueError('dtemp_dT must be non-zero when provided.')
-      print('restoring dTemp template:', dtemp_tpl)
-      dtemp_tpl_set = load_dtemp_template(dtemp_tpl, TPL, spt, spline_cv, spline_ev, tplvsini, tplR, R_inst, v_lo, v_hi, tplqmin, dtemp_dT, dtemp_mode)
+      dTemp_tpl_set = None
+   if dTemp_tpl:
+      if dTemp_dT == 0:
+         raise ValueError('dTemp_dT must be non-zero when provided.')
+      print('restoring dTemp template:', dTemp_tpl)
+      dTemp_tpl_set = load_dTemp_template(dTemp_tpl, TPL, spt, spline_cv, spline_ev, tplvsini, tplR, R_inst, v_lo, v_hi, tplqmin, dTemp_dT, inst, drs, fib, targ)
 
 
    rvdrs = np.array([sp.ccf.rvc for sp in spoklist])
@@ -2260,7 +2258,7 @@ def serval():
       #chi2map = nans((nord, int(np.ceil((v_hi-v_lo)/ v_step))))
       chi2map = nans((nord, len(np.arange(targrv-tplrv+v_lo, targrv-tplrv+v_hi, v_step))))
       diff_width = not (ccf or diff_rv)
-      meas_dTemp = bool(dtemp_tpl_set) and not (ccf or diff_rv)
+      meas_dTemp = bool(dTemp_tpl_set) and not (ccf or diff_rv)
       RV, e_RV = nans((2, nspec))
       rv, e_rv = nans((2, nspec, nord))
       dLW, e_dLW = nans((2, nspec)) # differential width change
@@ -2514,17 +2512,17 @@ def serval():
                      #ogplot(wmod,f2, 'axis x1y2')
                      pause(o, 'dLW', dlw[n,o])
                      gplot.reset()
-                     
-               if meas_dtemp:
-                  dtemp_grad = poly * dtemp_tpl_set[o](dopshift(wmod, par.params[0]))
+
+               if meas_dTemp:
+                  dTemp_grad = poly * dTemp_tpl_set[o](dopshift(wmod, par.params[0]))
                   weights = 1 / e2[keep]**2
-                  denom = np.dot(dtemp_grad[keep]**2, weights)
+                  denom = np.dot(dTemp_grad[keep]**2, weights)
                   if denom > 0:
-                     dtempo = np.dot((f2-f2mod)[keep] * dtemp_grad[keep], weights) / denom
-                     e_dtempo = np.sqrt(1 / denom)
-                     dtemp_rchi = rms(((f2-f2mod) - dtempo * dtemp_grad)[keep] / e2[keep])
-                     dtemp[n,o] = dtempo
-                     e_dtemp[n,o] = e_dtempo * dtemp_rchi
+                     dTempo = np.dot((f2-f2mod)[keep] * dTemp_grad[keep], weights) / denom
+                     e_dTempo = np.sqrt(1 / denom)
+                     dTemp_rchi = rms(((f2-f2mod) - dTempo * dTemp_grad)[keep] / e2[keep])
+                     dTemp[n,o] = dTempo
+                     e_dTemp[n,o] = e_dTempo * dTemp_rchi
 
             fmod[o] = f2mod
             if par.perror is None: par.perror = [0.,0.,0.,0.]
@@ -2682,8 +2680,8 @@ def serval():
             dLW[n], e_dLW[n] = wsem(dlw[n,ind], e=e_dlw[n,ind])
 
          if meas_dTemp:
-            ind, = where(np.isfinite(e_dtemp[n]))
-            dTemp[n], e_dTemp[n] = wsem(dtemp[n,ind], e=e_dtemp[n,ind])
+            ind, = where(np.isfinite(e_dTemp[n]))
+            dTemp[n], e_dTemp[n] = wsem(dTemp[n,ind], e=e_dTemp[n,ind])
 
          if 0: # plot RVs of all orders
             gplot.key('title "rv %i:  %s"' %(n+1,sp.timeid))
@@ -2760,8 +2758,8 @@ def serval():
       snrunit = [open(snrfile, w_or_a), open(snrfile+'bad', w_or_a)]
       chiunit = [open(chifile, w_or_a), open(chifile+'bad', w_or_a)]
       dlwunit = [open(dlwfile, w_or_a), open(dlwfile+'bad', w_or_a)]
-      dtempunit = [open(dtempfile, w_or_a), open(dtempFile+ 'bad', w_or_a)]
-      e_dtempunit = [open(dtempfile, w_or_a), open(e_dtempFile+ 'bad', w_or_a)]
+      dTempunit = [open(dTempfile, w_or_a), open(dTempFile+ 'bad', w_or_a)]
+      e_dTempunit = [open(dTempfile, w_or_a), open(e_dTempFile+ 'bad', w_or_a)]
       e_dlwunit = [open(e_dlwfile, w_or_a), open(e_dlwfile+'bad', w_or_a)]
       halunit = irtunit = nadunit = []
       if meas_index:
@@ -2792,8 +2790,8 @@ def serval():
          print(sp.bjd, mlRVc[n], e_mlRVc[n], mlCRX[n], e_mlCRX[n], dLW[n], e_dLW[n], dTemp[n], e_dTemp[n], file=mlcunit[rvflag])
          print(sp.bjd, dLW[n], e_dLW[n], *dlw[n], file=dlwunit[rvflag])
          print(sp.bjd, dLW[n], e_dLW[n], *e_dlw[n], file=e_dlwunit[rvflag])
-         print(sp.bjd, dTemp[n], e_dTemp[n], *dtemp[n], file=dTempunit[rvflag])
-         print(sp.bjd, dTemp[n], e_dTemp[n], *e_dtemp[n], file=e_dTempunit[rvflag])
+         print(sp.bjd, dTemp[n], e_dTemp[n], *dTemp[n], file=dTempunit[rvflag])
+         print(sp.bjd, dTemp[n], e_dTemp[n], *e_dTemp[n], file=e_dTempunit[rvflag])
          print(sp.bjd, np.nansum(snr[n]**2)**0.5, *snr[n], file=snrunit[rvflag])
          print(sp.bjd, *rchi[n], file=chiunit[rvflag])
          if meas_index:
@@ -2888,8 +2886,8 @@ if __name__ == "__main__":
    argopt('-deg',  help='degree for background polynomial'+default, type=int, default=3)
    argopt('-distmax', help='[arcsec] Max distance telescope position from target coordinates.', nargs='?', type=float, const=30.)
    argopt('-driftref', help='reference file for drift mode', type=str)
-   argopt('-dtemp_tpl', help='Temperature gradient template (dA/dT). Provide a serval template or fits.', nargs='?')
-   argopt('-dtemp_dT', help='[K] Temperature spacing used to build dtemp_tpl.', type=float)
+   argopt('-dTemp_tpl', help='Temperature gradient template (dA/dT). Provide a serval template or fits.', nargs='?')
+   argopt('-dTemp_dT', help='[K] Temperature spacing used to build dTemp_tpl.', type=float)
    argopt('-fib',  help='fibre', choices=['', 'A', 'B', 'AB'], default='')
    argopt('-inst', help='instrument '+default, default='HARPS', choices=insts)
    argopt('-nset', '-iset', help='slice for file subset (e.g. 1:10, ::5)', default=':', type=arg2slice)
