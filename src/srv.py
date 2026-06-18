@@ -60,7 +60,11 @@ class srv:
       sbjd = np.genfromtxt(pre+'.rvo'+fibsuf+'.dat', dtype=('|S33'), usecols=[0])   # as string
       self.snr = genfromtxt2d(pre+'.snr'+fibsuf+'.dat')
       self.dlw = genfromtxt2d(pre+'.dlw'+fibsuf+'.dat')
-
+      
+      try:
+         self.dtemp = genfromtxt2d(pre+'.dtemp'+fibsuf+'.dat')
+      except:
+         self.dtemp = None
       try:
          self.allerr = genfromtxt2d(pre+'.e_rvo'+fibsuf+'.dat')
          self.e_dlw = genfromtxt2d(pre+'.e_dlw'+fibsuf+'.dat')
@@ -68,6 +72,10 @@ class srv:
          self.allerr = genfromtxt2d(pre+'.rvo'+fibsuf+'.daterr')
          print('No e_dlw. Consider updating and/or rerunning serval')
          self.e_dlw = 0 * self.dlw
+      try:
+         self.e_dtemp = genfromtxt2d(pre+'.e_dtemp'+fibsuf+'.dat')
+      except:
+         self.e_dtemp = 0 * self.dtemp if self.dtemp is not None else None
       self.rchi = genfromtxt2d(pre+'.chi'+fibsuf+'.dat')
       try:
          self.halpha = genfromtxt2d(pre+'.halpha.dat').T
@@ -78,6 +86,10 @@ class srv:
       except:
          print('warning: %s not found' % pre+'.pre'+fibsuf+'.dat')
       self.dLW, self.e_dLW = self.dlw.T[[1,2]]
+      if self.dtemp is not None:
+         self.dTemp, self.e_dTemp = self.dtemp.T[[1,2]]
+      else:
+         self.dTemp = self.e_dTemp = np.nan * self.dLW
 
       self.brv = genfromtxt2d(pre+'.brv'+fibsuf+'.dat')
       # info includes also flagged files; exclude them based on unpairable bjd
@@ -117,6 +129,9 @@ class srv:
          #return   # just one line, e.g. drift
 
       self.tsrv = genfromtxt2d(pre+'.srv.dat').T
+      if self.tsrv.shape[0] >= 9:
+         self.dTemp = self.tsrv[7]
+         self.e_dTemp = self.tsrv[8]
       self.trvc = self.bjd, RVc_old, e_RVc_old, RVd, e_RVd, RV_old, e_RV_old, BRV, RVsa \
                 = genfromtxt2d(pre+'.rvc'+fibsuf+'.dat').T
       self.drs = genfromtxt2d(pre+'.drs.dat')
@@ -168,6 +183,28 @@ class srv:
       args += (",", self.brv.T, ' us ($1-2450000):(-($10-$9)) lc 2 pt 12 t "-dBERV [m/s]"')
       gplot(bjd-2450000, dLW, e_dLW, self.has_d, self.info, self.flag, np.nan_to_num(self.sunalt), np.nan_to_num(self.moonsep), np.nan_to_num(self.moonphase), arg, *args, **kwargs)
       if len(args)==3: pause('dLW ', self.tag)
+
+   def plot_dtemp(self, *args, **kwargs):
+      '''Show dTemp time series.'''
+      bjd, dTemp, e_dTemp = self.bjd, self.dTemp, self.e_dTemp
+      arg = ''
+      if not self.has_d.all():
+         arg += 'us 1:2:3 w e pt 6 lt 7 t "dTemp no drift"'
+      if self.has_d.any():
+         if arg: arg += ', "" '
+         arg += 'us 1:2:($3/$4):8 w e pt 7 palette t "dTemp"'
+      hypertext = ', "" us 1:2:(sprintf("No: %d\\nID: %s\\nBJD: %f\\ndTemp: %f +/- %f\\nflag: %d\\nsunalt: %.2f deg\\nmoonsep: %.2f deg\\nmoonphase: %.2f deg",$0+1, stringcolumn(5),$1, $2, $3, $6, $7, $8, $9)):8 w labels hypertext point pt 7 palette t ""'
+      arg += hypertext
+      arg += ', "" us 1:2:7 palette pt 6 ps 1.2'
+
+      gplot.key('right Right top tit "%s" right'%(self.keytitle))
+      gplot.xlabel('"BJD - 2 450 000"').ylabel('"dTemp [K]"').cblabel('"     Sun altitude [deg]    Moon separation [deg]"')
+      gplot.palette('defined (-30 "black", -5 "yellow", -4.9 "white", 4.9 "white", 5 "yellow", 30 "black")')\
+            .cbrange('[-30:30]')
+
+      args += (",", self.brv.T, ' us ($1-2450000):(-($10-$9)) lc 2 pt 12 t "-dBERV [m/s]"')
+      gplot(bjd-2450000, dTemp, e_dTemp, self.has_d, self.info, self.flag, np.nan_to_num(self.sunalt), np.nan_to_num(self.moonsep), np.nan_to_num(self.moonphase), arg, *args, **kwargs)
+      if len(args)==3: pause('dTemp ', self.tag)
 
    def plot_halpha(self):
       '''Show Halpha time series.'''
@@ -829,6 +866,7 @@ if __name__ == "__main__":
    argopt('-dlw', help='plot dLW', action='store_true')
    argopt('-dlwo', help='plot dLW_o colorcoded', action='store_true')
    argopt('-dlwno', help='plot dLW and the dLW_o for spectrum n in a lower panel', action='store_true')
+   argopt('-dtemp', help='plot dTemp', action='store_true')
    argopt('-drs', help='plot DRS RV vs RVc', action='store_true')
    argopt('-gls', help='GLS periodogram', action='store_true')
    argopt('-i', help='interactive task selection', action='store_true')
@@ -878,6 +916,8 @@ if __name__ == "__main__":
             obj.plotrv()
          if args.dlw:
             obj.plot_dlw()
+         if args.dtemp
+            obj.plot_dtemp()
          if args.disp:
             obj.disp()
          if args.drs:
