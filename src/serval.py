@@ -39,6 +39,7 @@ import cspline as spl
 import masktools
 import phoenix_as_RVmodel
 from chi2map import Chi2Map
+import dTemp as dTEMP
 
 gplot2 = Gplot() # for a second plot window
 gplot.reset = lambda *x: gplot.put('reset', *x).unset('pointintervalbox').bar(0).colors('classic').mxtics().mytics()   # suppress annoying white circles, gnuplot 5.4.4+
@@ -941,7 +942,7 @@ def serval():
 
    if not bp: sys.stdout = Logger()
 
-   global obj, targ, oset, coset, last, tpl, sp, fmod, reana, inst, fib, look, looka, looki, lookt, lookp, lookssr, lookvsini, pmin, pmax, debug, pspllam, kapsig, nclip, atmmask_file, atmspec, atm_cal_dry, skyfile, atmwgt, omin, omax, ptmin, ptmax, driftref, deg, targrv, tplrv, tplvsini, tplR, R_inst
+   global obj, targ, oset, coset, last, tpl, sp, fmod, reana, inst, fib, look, looka, looki, lookt, lookp, lookssr, lookvsini, lookdtemp, pmin, pmax, debug, pspllam, kapsig, nclip, atmmask_file, atmspec, atm_cal_dry, skyfile, atmwgt, omin, omax, ptmin, ptmax, driftref, deg, targrv, tplrv, tplvsini, tplR, R_inst, dtemp_tpl, dtemp_dT
 
    outdir = obj + '/'
    fibsuf = '_B' if inst=='FEROS' and fib=='B' else ''
@@ -1073,6 +1074,8 @@ def serval():
    if lookp: lookp = np.arange(iomax)[lookp]
    if lookssr: lookssr = np.arange(iomax)[lookssr]
    if lookvsini: lookvsini = np.arange(iomax)[lookvsini]
+   if lookdtemp: lookdtemp = np.arange(iomax)[lookdtemp]
+   
 
    if outfmt or outchi: os.system('mkdir -p '+obj+'/res')
    w_or_a = 'a' if append else 'w'
@@ -1094,6 +1097,8 @@ def serval():
    irtfile = outdir + obj + '.cairt' + fibsuf + '.dat'
    dlwfile = outdir + obj + '.dlw' + fibsuf + '.dat'
    e_dlwfile = outdir + obj + '.e_dlw' + fibsuf + '.dat'
+   dtempfile = outdir + obj + '.dtemp' + fibsuf + '.dat'
+   e_dtempfile = outdir + obj + '.e_dtemp' + fibsuf + '.dat'
 
    # (echo 0 0 ; awk '{if($2!=x2){print x; print $0}; x=$0; x2=$2;}' telluric_mask_atlas.dat )> telluric_mask_atlas_short.dat
    #################################
@@ -1529,6 +1534,13 @@ def serval():
 
       # set up array for vsini
       VSINI = np.nan * np.empty([nord,2])
+
+   dtemp_tpl_set = None
+   if dtemp_tpl:
+      if dtemp_dT == 0:
+         raise ValueError('dtemp_dT must be non-zero when provided.')
+      print('restoring dTemp template:', dtemp_tpl)
+      dtemp_tpl_set = dTEMP.load_template(dtemp_tpl, TPL, spt, Tpl, spline_cv, spline_ev, tplvsini, tplR, R_inst, (v_lo, v_hi), tplqmin, dtemp_dT, inst, drs, fib, targ)
 
 
    rvdrs = np.array([sp.ccf.rvc for sp in spoklist])
@@ -2156,10 +2168,14 @@ def serval():
       #chi2map = nans((nord, int(np.ceil((v_hi-v_lo)/ v_step))))
       chi2map = nans((nord, len(np.arange(targrv-tplrv+v_lo, targrv-tplrv+v_hi, v_step))))
       diff_width = not (ccf or diff_rv)
+      meas_dtemp = bool(dtemp_tpl_set) and not (ccf or diff_rv)
       RV, e_RV = nans((2, nspec))
       rv, e_rv = nans((2, nspec, nord))
       dLW, e_dLW = nans((2, nspec)) # differential width change
       dlw, e_dlw = nans((2, nspec, nord)) # differential width change
+      dTemp, e_dTemp = nans((2, nspec)) # temperature change
+      dtemp, e_dtemp = nans((2, nspec, nord)) # temperature change per order
+
 
       print('Iteration %s / %s (%s)' % (iterate, niter, obj))
       print("RV method: ", 'CCF' if ccf else 'DRIFT' if diff_rv else 'LEAST SQUARE')
@@ -2421,6 +2437,16 @@ def serval():
                      #ogplot(wmod,f2, 'axis x1y2')
                      pause(o, 'dLW', dlw[n,o])
                      gplot.reset()
+                     
+               if meas_dtemp:
+                  poly = calcspec(wmod, *par.params, retpoly=True)
+                  dtemp_grad = poly * dtemp_tpl_set[o](dopshift(wmod, par.params[0]))
+                  dtemp[n,o], e_dtemp[n,o] = dTEMP.measure(f2-f2mod, e2, dtemp_grad, keep)
+                  if o in lookdtemp:
+                     dTEMP.plot_measurement(wmod, f2-f2mod, e2, dtemp_grad, keep,
+                                                      dtemp[n,o], e_dtemp[n,o], obj, n+1, o)
+
+
 
             fmod[o] = f2mod
             if par.perror is None: par.perror = [0.,0.,0.,0.]
@@ -2577,6 +2603,14 @@ def serval():
             ind, = where(np.isfinite(e_dlw[n]))
             dLW[n], e_dLW[n] = wsem(dlw[n,ind], e=e_dlw[n,ind])
 
+         if meas_dtemp:
+            ind, = where(np.isfinite(dtemp[n]) & np.isfinite(e_dtemp[n]) & (e_dtemp[n] > 0))
+            if ind.size:
+               dTemp[n], e_dTemp[n] = wsem(dtemp[n,ind], e=e_dtemp[n,ind])
+            else:
+               print('WARNING: no finite dTemp measurements for', sp.timeid)
+
+
          if 0: # plot RVs of all orders
             gplot.key('title "rv %i:  %s"' %(n+1,sp.timeid))
             gplot(orders,rv[n,orders],e_rv[n,orders],rvccf[n,orders],e_rvccf[n,orders],'us 1:2:3 w e, "" us 1:4:5 w e t "ccf", {0}, {0} - {1}, {0}+{1} lt 2'.format(RV[n],e_RV[n]))
@@ -2653,6 +2687,8 @@ def serval():
       chiunit = [open(chifile, w_or_a), open(chifile+'bad', w_or_a)]
       dlwunit = [open(dlwfile, w_or_a), open(dlwfile+'bad', w_or_a)]
       e_dlwunit = [open(e_dlwfile, w_or_a), open(e_dlwfile+'bad', w_or_a)]
+      dtempunit = [open(dtempfile, w_or_a), open(dtempfile+'bad', w_or_a)]
+      e_dtempunit = [open(e_dtempfile, w_or_a), open(e_dtempfile+'bad', w_or_a)]
       halunit = irtunit = nadunit = []
       if meas_index:
          halunit = [open(halfile, w_or_a), open(halfile+'bad', w_or_a)]
@@ -2678,10 +2714,12 @@ def serval():
          print(sp.bjd, RV[n], e_RV[n], rvm[n], rvmerr[n], *e_rv[n], file=mypfile[rvflag])
          print(sp.bjd, RVc[n], e_RVc[n], sp.drift, sp.e_drift, RV[n], e_RV[n], sp.berv, sp.sa, file=rvcunit[rvflag])
          print(sp.bjd, *(list(tCRX[n])+list(xo[n])), file=crxunit[rvflag])
-         print(sp.bjd, RVc[n], e_RVc[n], CRX[n], e_CRX[n], dLW[n], e_dLW[n], file=srvunit[rvflag])
-         print(sp.bjd, mlRVc[n], e_mlRVc[n], mlCRX[n], e_mlCRX[n], dLW[n], e_dLW[n], file=mlcunit[rvflag])
+         print(sp.bjd, RVc[n], e_RVc[n], CRX[n], e_CRX[n], dLW[n], e_dLW[n], dTemp[n], e_dTemp[n], file=srvunit[rvflag])
+         print(sp.bjd, mlRVc[n], e_mlRVc[n], mlCRX[n], e_mlCRX[n], dLW[n], e_dLW[n], dTemp[n], e_dTemp[n], file=mlcunit[rvflag])
          print(sp.bjd, dLW[n], e_dLW[n], *dlw[n], file=dlwunit[rvflag])
          print(sp.bjd, dLW[n], e_dLW[n], *e_dlw[n], file=e_dlwunit[rvflag])
+         print(sp.bjd, dTemp[n], e_dTemp[n], *dtemp[n], file=dtempunit[rvflag])
+         print(sp.bjd, dTemp[n], e_dTemp[n], *e_dtemp[n], file=e_dtempunit[rvflag])
          print(sp.bjd, np.nansum(snr[n]**2)**0.5, *snr[n], file=snrunit[rvflag])
          print(sp.bjd, *rchi[n], file=chiunit[rvflag])
          if meas_index:
@@ -2694,7 +2732,8 @@ def serval():
             print(sp.bjd, sp.airmass, *sp.atm_par, file=atmunit[0])
 
       for ifile in rvunit + rvounit + rvcunit + snrunit + chiunit + mypfile + crxunit \
-                 + srvunit + mlcunit + dlwunit +e_dlwunit + halunit + irtunit + nadunit + atmunit:
+                 + srvunit + mlcunit + dlwunit + e_dlwunit + dtempunit + e_dtempunit \
+                 + halunit + irtunit + nadunit + atmunit:
          ifile.close()
 
       t2 = time.time() - t0
@@ -2814,6 +2853,8 @@ if __name__ == "__main__":
    argopt('-deg',  help='degree for background polynomial'+default, type=int, default=3)
    argopt('-distmax', help='[arcsec] Max distance telescope position from target coordinates.', nargs='?', type=float, const=30.)
    argopt('-driftref', help='reference file for drift mode', type=str)
+   argopt('-dtemp_tpl', help='dTemp template input. Provide one gradient template, one comparison spectrum/template, or a directory/list of FITS spectra/templates.', nargs='+')
+   argopt('-dtemp_dT', help='[K] Signed temperature spacing for finite differences or comparison templates. Negative values are allowed; zero is invalid.', type=float)
    argopt('-fib',  help='fiber to use, if "" set to to instrument default'+default, choices=['', 'A', 'B', 'AB'], default=fib)
    argopt('-inst', help='instrument '+default, default='HARPS', choices=insts)
    argopt('-nset', '-iset', help='slice for file subset (e.g. 1:10, ::5)', default=':', type=arg2slice)
@@ -2822,6 +2863,7 @@ if __name__ == "__main__":
    argopt('-last', help='use last template (-tpl <obj>/<obj>.fits)', action='store_true')
    argopt('-look', help='slice of orders to view the fit [:]', nargs='?', default=[], const=':', type=arg2slice)
    argopt('-looka', help='orders to watch atmosphere correction', nargs='?', default=[], const=':', type=arg2slice)
+   argopt('-lookdtemp', help='slice of orders to view the dTemp residual projection [:]', nargs='?', default=[], const=':', type=arg2slice)
    argopt('-looki', help='list of indices to watch', nargs='*', choices=sorted(lines.keys()), default=[]) #, const=['Halpha'])
    argopt('-lookt', help='slice of orders to view the coadd fit [:]', nargs='?', default=[], const=':', type=arg2slice)
    argopt('-lookp', help='slice of orders to view the preRV fit [:]', nargs='?', default=[], const=':', type=arg2slice)
