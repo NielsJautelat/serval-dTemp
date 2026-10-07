@@ -46,9 +46,8 @@ def _read_template(path, reference, inst, drs, fib, targ):
       with fits.open(path) as hdu:
          wave = hdu[1].data['lnwave'].astype(float)
          flux = hdu[1].data['flux'].astype(float)
-         resolution = hdu[0].header.get('HIERARCH SERVAL INST R', np.inf)
       wave, flux = _split_1d_template_by_order(wave, flux, reference)
-      return wave, flux, None, resolution
+      return wave, flux, None
 
    if is_serval_tpl(path):
       filename = path + os.sep + os.path.basename(path.rstrip(os.sep)) + '.fits' if os.path.isdir(path) else path
@@ -57,15 +56,16 @@ def _read_template(path, reference, inst, drs, fib, targ):
 
    try:
       spectrum = Spectrum(path, inst=inst, pfits=True, orders=np.s_[:], drs=drs, fib=fib, targ=targ)
-      return barshift(spectrum.w, spectrum.berv), spectrum.f, spectrum.bpmap, None
+      quality = 1. * (spectrum.bpmap == 0)
+      return barshift(spectrum.w, spectrum.berv), spectrum.f, quality
    except Exception as error:
       raise ValueError('Unsupported dTemp template format: %s (%s)' % (path, error))
 
 
 def _mean_templates(template_sets, nord):
-   reference_wave, reference_gradient, reference_bad, reference_resolution = template_sets[0]
+   reference_wave, reference_gradient, reference_bad = template_sets[0]
    if len(template_sets) == 1:
-      return reference_wave, reference_gradient, reference_bad, reference_resolution
+      return reference_wave, reference_gradient, reference_bad
 
    gradient = []
    bad = []
@@ -82,11 +82,11 @@ def _mean_templates(template_sets, nord):
          bad += [np.any(bad_values, axis=0)]
       else:
          bad += [None]
-   return reference_wave, gradient, bad, reference_resolution
+   return reference_wave, gradient, bad
 
 
 def compute_gradient(template_input, rv_templates, reference, tpl_class, spline_cv, spline_ev,
-                  tplvsini, tplR, instrument_resolution, velocity_range, tplqmin,
+                  tplvsini, velocity_range, tplqmin,
                   temperature_step, inst, drs, fib, targ):
    """Load one or more gradient/comparison spectra as per-order dTemp templates."""
    paths = _template_paths(template_input)
@@ -94,12 +94,9 @@ def compute_gradient(template_input, rv_templates, reference, tpl_class, spline_
       raise ValueError('No dTemp template fits files found in: %s' % template_input)
 
    template_sets = []
-   template_resolution = np.inf
    for path in paths:
       print('restoring dTemp template:', path)
-      wave, flux, quality, resolution = _read_template(path, reference, inst, drs, fib, targ)
-      if resolution is not None:
-         template_resolution = min(template_resolution, resolution)
+      wave, flux, quality = _read_template(path, reference, inst, drs, fib, targ)
       bad = [None] * len(flux) if quality is None else quality < tplqmin
       gradient = []
       for order, (order_wave, order_flux) in enumerate(zip(wave, flux)):
@@ -107,22 +104,14 @@ def compute_gradient(template_input, rv_templates, reference, tpl_class, spline_
             gradient += [np.nan * order_flux]
          else:
             gradient += [(order_flux - rv_templates[order](order_wave)) / temperature_step]
-      template_sets += [(wave, gradient, bad, template_resolution)]
+      template_sets += [(wave, gradient, bad)]
 
-   wave, gradient, bad, template_resolution = _mean_templates(template_sets, len(rv_templates))
-
-   resolution = None
-   if tplR is not None:
-      instrument_resolution, = tplR[0:1] or [instrument_resolution]
-      template_resolution, = tplR[1:2] or [template_resolution]
-      resolution = (instrument_resolution**-2 - template_resolution**-2)**-0.5
-      print('Resolving power (dTemp) R_inst = %i, R_tpl = %.0f, R = %i.' %
-            (instrument_resolution, template_resolution, resolution))
+   wave, gradient, bad = _mean_templates(template_sets, len(rv_templates))
 
    v_lo, v_hi = velocity_range
    return [None if rv_templates[order] is None else
            tpl_class(order_wave, order_gradient, spline_cv, spline_ev, bk=order_bad,
-                     vsini=tplvsini, R=resolution, mask=True, vrange=[v_lo, v_hi])
+                     vsini=tplvsini, mask=True, vrange=[v_lo, v_hi])
            for order, (order_wave, order_gradient, order_bad) in enumerate(zip(wave, gradient, bad))]
 
 

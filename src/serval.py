@@ -1539,7 +1539,7 @@ def serval():
       if dtemp_dT == 0:
          raise ValueError('dtemp_dT must be non-zero when provided.')
       print('restoring dTemp template:', dtemp_tpl)
-      dtemp_tpl = dTEMP.compute_gradient(dtemp_tpl, TPL, spt, Tpl, spline_cv, spline_ev, tplvsini, tplR, R_inst, (v_lo, v_hi), tplqmin, dtemp_dT, inst, drs, fib, targ)
+      dtemp_tpl = dTEMP.compute_gradient(dtemp_tpl, TPL, spt, Tpl, spline_cv, spline_ev, tplvsini, (v_lo, v_hi), tplqmin, dtemp_dT, inst, drs, fib, targ)
 
 
    rvdrs = np.array([sp.ccf.rvc for sp in spoklist])
