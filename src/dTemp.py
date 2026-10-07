@@ -131,8 +131,8 @@ def measure(residual, error, gradient, keep):
 
    temperature = np.dot(residual[keep] * gradient[keep], weights) / denominator
    normalized_residual = (residual[keep] - temperature * gradient[keep]) / error[keep]
-   residual_rms = np.sqrt(np.mean(normalized_residual**2))
-   return temperature, np.sqrt(1 / denominator) * residual_rms
+   rms = np.sqrt(np.mean(normalized_residual**2))
+   return temperature, np.sqrt(1 / denominator) * rms
 
 
 def plot_measurement(wave, residual, error, gradient, keep, temperature,
