@@ -85,7 +85,7 @@ def _mean_templates(template_sets, nord):
    return reference_wave, gradient, bad, reference_resolution
 
 
-def load_template(template_input, rv_templates, reference, tpl_class, spline_cv, spline_ev,
+def compute_gradient(template_input, rv_templates, reference, tpl_class, spline_cv, spline_ev,
                   tplvsini, tplR, instrument_resolution, velocity_range, tplqmin,
                   temperature_step, inst, drs, fib, targ):
    """Load one or more gradient/comparison spectra as per-order dTemp templates."""

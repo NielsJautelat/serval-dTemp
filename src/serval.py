@@ -1535,12 +1535,11 @@ def serval():
       # set up array for vsini
       VSINI = np.nan * np.empty([nord,2])
 
-   dtemp_tpl_set = None
    if dtemp_tpl:
       if dtemp_dT == 0:
          raise ValueError('dtemp_dT must be non-zero when provided.')
       print('restoring dTemp template:', dtemp_tpl)
-      dtemp_tpl_set = dTEMP.load_template(dtemp_tpl, TPL, spt, Tpl, spline_cv, spline_ev, tplvsini, tplR, R_inst, (v_lo, v_hi), tplqmin, dtemp_dT, inst, drs, fib, targ)
+      dtemp_tpl = dTEMP.compute_gradient(dtemp_tpl, TPL, spt, Tpl, spline_cv, spline_ev, tplvsini, tplR, R_inst, (v_lo, v_hi), tplqmin, dtemp_dT, inst, drs, fib, targ)
 
 
    rvdrs = np.array([sp.ccf.rvc for sp in spoklist])
@@ -2168,7 +2167,7 @@ def serval():
       #chi2map = nans((nord, int(np.ceil((v_hi-v_lo)/ v_step))))
       chi2map = nans((nord, len(np.arange(targrv-tplrv+v_lo, targrv-tplrv+v_hi, v_step))))
       diff_width = not (ccf or diff_rv)
-      meas_dtemp = bool(dtemp_tpl_set) and not (ccf or diff_rv)
+      meas_dtemp = bool(dtemp_tpl) and not (ccf or diff_rv)
       RV, e_RV = nans((2, nspec))
       rv, e_rv = nans((2, nspec, nord))
       dLW, e_dLW = nans((2, nspec)) # differential width change
@@ -2440,7 +2439,7 @@ def serval():
                      
                if meas_dtemp:
                   poly = calcspec(wmod, *par.params, retpoly=True)
-                  dtemp_grad = poly * dtemp_tpl_set[o](dopshift(wmod, par.params[0]))
+                  dtemp_grad = poly * dtemp_tpl[o](dopshift(wmod, par.params[0]))
                   dtemp[n,o], e_dtemp[n,o] = dTEMP.measure(f2-f2mod, e2, dtemp_grad, keep)
                   if o in lookdtemp:
                      dTEMP.plot_measurement(wmod, f2-f2mod, e2, dtemp_grad, keep,
@@ -2853,6 +2852,8 @@ if __name__ == "__main__":
    argopt('-deg',  help='degree for background polynomial'+default, type=int, default=3)
    argopt('-distmax', help='[arcsec] Max distance telescope position from target coordinates.', nargs='?', type=float, const=30.)
    argopt('-driftref', help='reference file for drift mode', type=str)
+   argopt('-dtemp_ref', nargs=2, metavar=('dtemp_tpl','dtemp_dT'))
+   argopt('-dtemp_temp', type=float)
    argopt('-dtemp_tpl', help='dTemp template input. Provide one gradient template, one comparison spectrum/template, or a directory/list of FITS spectra/templates.', nargs='+')
    argopt('-dtemp_dT', help='[K] Signed temperature spacing for finite differences or comparison templates. Negative values are allowed; zero is invalid.', type=float)
    argopt('-fib',  help='fiber to use, if "" set to to instrument default'+default, choices=['', 'A', 'B', 'AB'], default=fib)
@@ -2996,6 +2997,10 @@ if __name__ == "__main__":
    if vsiniauto:
       if niter < 3:
          niter = 3
+
+   if dtemp_ref:
+      dtemp_tpl, dtemp_dT = args.dtemp_ref
+      dtemp_dT = dtemp_temp - float(dtemp_dT)
 
    try:
       serval()
