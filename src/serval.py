@@ -2854,8 +2854,6 @@ if __name__ == "__main__":
    argopt('-driftref', help='reference file for drift mode', type=str)
    argopt('-dtemp_ref', nargs=2, metavar=('dtemp_tpl','dtemp_dT'))
    argopt('-dtemp_temp', type=float)
-   argopt('-dtemp_tpl', help='dTemp template input. Provide one gradient template, one comparison spectrum/template, or a directory/list of FITS spectra/templates.', nargs='+')
-   argopt('-dtemp_dT', help='[K] Signed temperature spacing for finite differences or comparison templates. Negative values are allowed; zero is invalid.', type=float)
    argopt('-fib',  help='fiber to use, if "" set to to instrument default'+default, choices=['', 'A', 'B', 'AB'], default=fib)
    argopt('-inst', help='instrument '+default, default='HARPS', choices=insts)
    argopt('-nset', '-iset', help='slice for file subset (e.g. 1:10, ::5)', default=':', type=arg2slice)
